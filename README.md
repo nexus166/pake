@@ -43,41 +43,67 @@ go get -u github.com/nexus166/pake
 ## Usage 
 
 ```golang
-// both parties should have a weak key
-pw := []byte{1, 2, 3}
+package main
 
-// initialize sender P ("0" indicates sender)
-P, err := New(pw, 0, elliptic.P521())
-check(err)
+import (
+	"crypto/elliptic"
+	"crypto/sha512"
+	"fmt"
+	"os"
 
-// initialize recipient Q ("1" indicates recipient)
-Q, err := New(pw, 1, elliptic.P521())
-check(err)
+	"github.com/nexus166/pake"
+)
 
-// first, P sends u to Q
-err = Q.Update(P.Export())
-check(err) // errors will occur when any part of the process fails
+func main() {
+	// both parties should have a weak key
+	pw := []byte{1, 2, 3}
 
-// Q computes k, sends H(k), v back to P
-err = P.Update(Q.Export())
-check(err)
+	// initialize sender P ("0" indicates sender)
+	P, err := pake.New(pw, 0, elliptic.P521(), sha512.New)
+	check(err)
 
-// P computes k, H(k), sends H(k) to Q
-err = Q.Update(P.Export())
-check(err)
+	// initialize recipient Q ("1" indicates recipient)
+	Q, err := pake.New(pw, 1, elliptic.P521(), sha512.New)
+	check(err)
 
-// both P and Q now have session key
-Pk := P.Key()
-Qk := Q.Key()
+	// first, P sends u to Q
+	Pe := P.Export()
+	fmt.Printf("P public:  %x\n", Pe)
 
-bytes.Equal(Pk, Qk) == true
+	// Q computes k, sends H(k), v back to P
+	err = Q.Update(Pe)
+	check(err) // errors will occur when any part of the process fails
+	Qe := Q.Export()
+	fmt.Printf("Q public:  %x\n", Qe)
+	err = P.Update(Qe)
+	check(err)
+
+	// P computes k, H(k), sends H(k) to Q
+	err = Q.Update(P.Export())
+	check(err)
+
+	// both P and Q now have session key
+	Pk, err := P.Key()
+	check(err)
+	fmt.Printf("key P: %x\n", Pk)
+
+	Qk, err := Q.Key()
+	check(err)
+	fmt.Printf("key Q: %x\n", Qk)
+}
+
+func check(err error) {
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(2)
+	}
+}
 ```
 
 ## Thanks
 
-Thanks [@tscholl2](https://github.com/tscholl2) for implementing the first version.
-Thanks [@schollz](https://github.com/schollz) for implementing the second version.
+Thanks [@tscholl2](https://github.com/tscholl2) for implementing the [first version](https://github.com/tscholl2/pake), and [@schollz](https://github.com/schollz) for implementing the [second version](https://github.com/schollz/pake).
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE).

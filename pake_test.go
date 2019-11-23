@@ -13,7 +13,6 @@ import (
 	"crypto/sha512"
 	"hash"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/sha3"
@@ -22,9 +21,9 @@ import (
 func benchmarkPake(b *testing.B, eC elliptic.Curve, h func() hash.Hash) {
 	for i := 0; i < b.N; i++ {
 		// initialize A
-		A, _ := New([]byte{1, 2, 3}, 0, eC, h, 1*time.Microsecond)
+		A, _ := New([]byte{1, 2, 3}, 0, eC, h)
 		// initialize B
-		B, _ := New([]byte{1, 2, 3}, 1, eC, h, 1*time.Microsecond)
+		B, _ := New([]byte{1, 2, 3}, 1, eC, h)
 		// send A's stuff to B
 		B.Update(A.Export())
 		// send B's stuff to A
@@ -83,7 +82,7 @@ func BenchmarkPake_P256_SHA2_256(b *testing.B) {
 }
 
 func TestError(t *testing.T) {
-	A, err := New([]byte{1, 2, 3}, 0, nil, nil, 1*time.Millisecond)
+	A, err := New([]byte{1, 2, 3}, 0, nil, nil)
 	assert.Nil(t, err)
 	A, err = New([]byte{1, 2, 3}, 0, elliptic.P224(), nil)
 	assert.NotNil(t, err)
@@ -97,10 +96,10 @@ func TestError(t *testing.T) {
 }
 
 func TestThatForSomeReasonCurve224IsFailing(t *testing.T) {
-	A, err := New([]byte{1, 2, 3}, 0, elliptic.P224(), nil, 1*time.Millisecond)
+	A, err := New([]byte{1, 2, 3}, 0, elliptic.P224(), nil)
 	assert.NotNil(t, err)
 	// initialize B
-	B, err := New([]byte{1, 2, 3}, 1, elliptic.P224(), nil, 1*time.Millisecond)
+	B, err := New([]byte{1, 2, 3}, 1, elliptic.P224(), nil)
 	assert.NotNil(t, err)
 	// send A's stuff to B
 	B.Update(A.Export())
@@ -110,10 +109,10 @@ func TestThatForSomeReasonCurve224IsFailing(t *testing.T) {
 	B.Update(A.Export())
 	s1, err := A.Key()
 	assert.Nil(t, err)
-	t.Logf("key A %x", s1)
+	t.Logf("%s key A %x", elliptic.P224().Params().Name, s1)
 	s1B, err := B.Key()
 	assert.Nil(t, err)
-	t.Logf("key B %x", s1B)
+	t.Logf("%s key B %x", elliptic.P224().Params().Name, s1B)
 	assert.NotEqual(t, s1, s1B)
 }
 
@@ -125,10 +124,10 @@ func TestKeyString(t *testing.T) {
 		elliptic.P521(),
 	}
 	for _, curve := range curves {
-		A, err := New([]byte{1, 2, 3}, 0, curve, nil, 1*time.Millisecond)
+		A, err := New([]byte{1, 2, 3}, 0, curve, nil)
 		assert.Nil(t, err)
 		// initialize B
-		B, err := New([]byte{1, 2, 3}, 1, curve, nil, 1*time.Millisecond)
+		B, err := New([]byte{1, 2, 3}, 1, curve, nil)
 		assert.Nil(t, err)
 		// send A's stuff to B
 		B.Update(A.Export())
@@ -138,15 +137,15 @@ func TestKeyString(t *testing.T) {
 		B.Update(A.Export())
 		s1, err := A.Key()
 		assert.Nil(t, err)
-		t.Logf("key A %x", s1)
+		t.Logf("%s key A %x", curve.Params().Name, s1)
 		s1B, err := B.Key()
 		assert.Nil(t, err)
-		t.Logf("key B %x", s1B)
+		t.Logf("%s key B %x", curve.Params().Name, s1B)
 		assert.Equal(t, s1, s1B)
 		// initialize A
-		A, _ = New([]byte{1, 2, 3}, 0, curve, nil, 1*time.Millisecond)
+		A, _ = New([]byte{1, 2, 3}, 0, curve, nil)
 		// initialize B
-		B, _ = New([]byte{1, 2, 3}, 1, curve, nil, 1*time.Millisecond)
+		B, _ = New([]byte{1, 2, 3}, 1, curve, nil)
 		// send A's stuff to B
 		B.Update(A.Export())
 		// send B's stuff to A
