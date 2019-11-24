@@ -32,7 +32,12 @@ The *H(k)* is a bcrypt hashed session key, which only the keeper of a real sessi
 Anytime some part of the algorithm fails verification: i.e. the points are not along the elliptic curve, or if a hash from either party is not identified, a non-nil error is returned. 
 When this happens, you should abort and start a PAKE session as it could have been compromised.
 
-
+Known working ECs:
+-	elliptic.P256(),
+-	elliptic.P384(),
+-	elliptic.P521(),
+-	[secp256k1.S256()](https://github.com/ethereum/go-ethereum/crypto/secp256k1),
+-	[siec.SIEC255()](https://github.com/tscholl2/siec),
 
 ## Installation
 
@@ -71,15 +76,15 @@ func main() {
 	fmt.Printf("P public:  %x\n", Pe)
 
 	// Q computes k, sends H(k), v back to P
-	err = Q.Update(Pe)
+	err = Q.Import(Pe)
 	check(err) // errors will occur when any part of the process fails
 	Qe := Q.Export()
 	fmt.Printf("Q public:  %x\n", Qe)
-	err = P.Update(Qe)
+	err = P.Import(Qe)
 	check(err)
 
 	// P computes k, H(k), sends H(k) to Q
-	err = Q.Update(P.Export())
+	err = Q.Import(P.Export())
 	check(err)
 
 	// both P and Q now have session key

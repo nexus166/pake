@@ -21,10 +21,24 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+// EC is a general curve which allows other elliptic curves to be used with PAKE.
+// Currently known working: p256, p384, p512, secp256k1, siec.
+type EC interface {
+	Add(x1, y1, x2, y2 *big.Int) (*big.Int, *big.Int)
+	ScalarBaseMult(k []byte) (*big.Int, *big.Int)
+	ScalarMult(Bx, By *big.Int, k []byte) (*big.Int, *big.Int)
+	IsOnCurve(x, y *big.Int) bool
+}
+
+// SetCurve The curve can be any curve that implements Add, ScalarBaseMult, ScalarMult, IsOnCurve.
+func (p *PAKE) SetCurve(eC EC) {
+	p.curve = eC
+}
+
 // PAKE keeps public and private variables by only transmitting between parties after marshaling.
 // References:
-// - [Figure 21/15] https://crypto.stanford.edu/~dabo/cryptobook/BonehShoup_0_4.pdf
-// - [Slide 11] http://www.lothar.com/~warner/MagicWormhole-PyCon2016.pdf
+// [Figure 21/15] https://crypto.stanford.edu/~dabo/cryptobook/BonehShoup_0_4.pdf.
+// [Slide 11] http://www.lothar.com/~warner/MagicWormhole-PyCon2016.pdf.
 type PAKE struct {
 	// Public variables
 	Role       int // initiator is 0, receiver is 1
@@ -46,43 +60,18 @@ type PAKE struct {
 	isVerified bool             // the session key validity
 }
 
-// Public returns the public variables of PAKE
-func (p *PAKE) Public() *PAKE {
-	return &PAKE{
-		Role: p.Role,
-		Uᵤ:   p.Uᵤ,
-		Uᵥ:   p.Uᵥ,
-		Vᵤ:   p.Vᵤ,
-		Vᵥ:   p.Vᵥ,
-		Xᵤ:   p.Xᵤ,
-		Xᵥ:   p.Xᵥ,
-		Yᵤ:   p.Yᵤ,
-		Yᵥ:   p.Yᵥ,
-		HkA:  p.HkA,
-		HkB:  p.HkB,
+// Key returns the session Key, unless it was not generated.
+// This function does not check the validity of the Key.
+func (p *PAKE) Key() ([]byte, error) {
+	if p.sum == nil {
+		return nil, fmt.Errorf("session key not generated")
 	}
-}
-
-// EC is a general curve which allows other elliptic curves to be used with PAKE.
-// The curve can be any curve that implements Add, ScalarBaseMult, ScalarMult, IsOnCurve.
-type EC interface {
-	Add(x1, y1, x2, y2 *big.Int) (*big.Int, *big.Int)
-	ScalarBaseMult(k []byte) (*big.Int, *big.Int)
-	ScalarMult(Bx, By *big.Int, k []byte) (*big.Int, *big.Int)
-	IsOnCurve(x, y *big.Int) bool
-}
-
-// SetCurve is used when unmarshaling the whole private struct.
-// The curve can be any curve that implements Add, ScalarBaseMult, ScalarMult, IsOnCurve.
-func (p *PAKE) SetCurve(eC EC) {
-	p.curve = eC
+	return p.sum, nil
 }
 
 // New will take the secret weak passphrase  to initialize the points on the elliptic curve.
 // The role is set to either 0 for the sender or 1 for the recipient.
-// The curve can be any curve that implements Add, ScalarBaseMult, ScalarMult, IsOnCurve.
-// nil curve will default to elliptic.P512
-// nil hash will default to SHA3_512, be mindful that this results in 64b session keys
+// nil curve will default to elliptic.P512, nil hash will default to SHA3_512. Be mindful that this results in 64b session keys.
 func New(key []byte, role int, curve EC, hash func() hash.Hash) (p *PAKE, err error) {
 	p = new(PAKE)
 	if hash == nil {
@@ -125,27 +114,34 @@ func New(key []byte, role int, curve EC, hash func() hash.Hash) (p *PAKE, err er
 	return p, err
 }
 
-var bcryptCost = 10
-
-// SetBCryptCost allows you to change the bcrypt cost/iterations. Default is 10.
-func SetBCryptCost(n int) { bcryptCost = n }
-
-var randR = rand.Reader
-
-// SetRandomReader allows you to change the randomness source. Default is crypto/rand.Reader.
-func SetRandomReader(r io.Reader) { randR = r }
+// IsVerified returns whether or not the k has been generated AND it confirmed to be valid.
+func (p *PAKE) IsVerified() bool {
+	return p.isVerified
+}
 
 // Export gob-encode the PAKE structure and hide private variables.
 func (p *PAKE) Export() []byte {
 	var r bytes.Buffer
-	if err := gob.NewEncoder(&r).Encode(p.Public()); err == nil {
+	if err := gob.NewEncoder(&r).Encode(&PAKE{
+		Role: p.Role,
+		Uᵤ:   p.Uᵤ,
+		Uᵥ:   p.Uᵥ,
+		Vᵤ:   p.Vᵤ,
+		Vᵥ:   p.Vᵥ,
+		Xᵤ:   p.Xᵤ,
+		Xᵥ:   p.Xᵥ,
+		Yᵤ:   p.Yᵤ,
+		Yᵥ:   p.Yᵥ,
+		HkA:  p.HkA,
+		HkB:  p.HkB,
+	}); err == nil {
 		return r.Bytes()
 	}
 	return nil
 }
 
-// Update will update itself with the other parties' Export() and determine what stage and what to generate.
-func (p *PAKE) Update(qBytes []byte) (err error) {
+// Import will update itself with the other parties' Export() and determine stage and what to generate.
+func (p *PAKE) Import(qBytes []byte) (err error) {
 	var q *PAKE
 	if err = gob.NewDecoder(bytes.NewBuffer(qBytes)).Decode(&q); err != nil {
 		return err
@@ -232,19 +228,15 @@ func (p *PAKE) Update(qBytes []byte) (err error) {
 	return err
 }
 
-// Key returns the session Key, unless it was not generated.
-// This function does not check the validity of the Key.
-func (p *PAKE) Key() ([]byte, error) {
-	if p.sum == nil {
-		return nil, fmt.Errorf("session key not generated")
-	}
-	return p.sum, nil
-}
+var bcryptCost = bcrypt.DefaultCost
 
-// IsVerified returns whether or not the k has been generated AND it confirmed to be valid.
-func (p *PAKE) IsVerified() bool {
-	return p.isVerified
-}
+// SetBCryptCost allows you to change the bcrypt cost/iterations. Default is 10.
+func SetBCryptCost(n int) { bcryptCost = n }
+
+var randR = rand.Reader
+
+// SetRandomReader allows you to change the randomness source. Default is crypto/rand.Reader.
+func SetRandomReader(r io.Reader) { randR = r }
 
 // _bytes guards the rand reader always checking that we have proper random []byte generated
 // panics on any error.
